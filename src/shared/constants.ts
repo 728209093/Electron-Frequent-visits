@@ -35,8 +35,48 @@ export const DEFAULT_TASK_CONFIG = {
   language: 'zh-CN',
   timezone: 'Asia/Shanghai',
   acceptCookie: true,
-  scrollBehavior: true,
   jsExecution: true,
+  
+  // 默认行为模拟配置
+  behavior: {
+    // 默认停留 5-15 秒
+    stayDuration: [5000, 15000] as [number, number],
+    
+    scroll: {
+      enabled: true,
+      direction: 'both' as const,
+      scrollCount: [3, 8] as [number, number],
+      scrollDistance: [200, 500] as [number, number],
+      scrollInterval: [500, 1500] as [number, number],
+      pauseAtBottom: true,
+      bottomPauseDuration: [2000, 5000] as [number, number],
+    },
+    
+    click: {
+      enabled: false,
+      selectors: [],
+      clickProbability: 0.3,
+      maxClicks: 3,
+      moveBeforeClick: true,
+    },
+    
+    mouseMove: {
+      enabled: true,
+      movePoints: [10, 25] as [number, number],
+      moveSpeed: [10, 30] as [number, number],
+      randomCurve: true,
+    },
+    
+    input: {
+      enabled: false,
+      selectors: [],
+      presetTexts: [],
+      typingSpeed: [50, 150] as [number, number],
+      inputProbability: 0.5,
+    },
+    
+    randomOrder: true,
+  },
 }
 
 // User Agents

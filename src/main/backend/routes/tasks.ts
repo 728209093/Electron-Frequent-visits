@@ -2,9 +2,18 @@ import { Router } from 'express'
 import { Database } from '../../database/Database'
 import { v4 as uuidv4 } from 'uuid'
 import { DEFAULT_TASK_CONFIG } from '../../../shared/constants'
+import { TaskExecutor } from '../../services/TaskExecutor'
+
+// 全局任务执行器实例
+let taskExecutor: TaskExecutor | null = null
 
 export function taskRoutes(db: Database) {
   const router = Router()
+
+  // 初始化任务执行器
+  if (!taskExecutor) {
+    taskExecutor = new TaskExecutor(db)
+  }
 
   // Get tasks by project
   router.get('/api/tasks', async (req, res) => {
@@ -197,33 +206,174 @@ export function taskRoutes(db: Database) {
     }
   })
 
-  // Task control endpoints (placeholders)
-  router.post('/api/tasks/:id/start', async (_req, res) => {
-    res.json({
-      code: 200,
-      message: 'Task started',
-    })
+  // Start task
+  router.post('/api/tasks/:id/start', async (req, res) => {
+    try {
+      const taskId = req.params.id
+
+      // 获取任务信息
+      const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId])
+      if (!task) {
+        return res.status(404).json({
+          code: 404,
+          message: 'Task not found',
+        })
+      }
+
+      if (task.status === 'running') {
+        return res.status(400).json({
+          code: 400,
+          message: 'Task is already running',
+        })
+      }
+
+      // 获取代理列表
+      let proxies: any[] = []
+      if (task.proxyPoolId) {
+        proxies = await db.all(
+          'SELECT * FROM proxy_list WHERE poolId = ? AND isActive = 1',
+          [task.proxyPoolId]
+        )
+      }
+
+      // 解析任务配置
+      const taskData = {
+        ...task,
+        config: JSON.parse(task.config),
+      }
+
+      // 执行任务
+      const executionId = await taskExecutor!.executeTask(taskData, proxies)
+
+      res.json({
+        code: 200,
+        message: 'Task started',
+        data: { executionId },
+      })
+    } catch (error: any) {
+      res.status(500).json({
+        code: 500,
+        message: error.message,
+      })
+    }
   })
 
-  router.post('/api/tasks/:id/stop', async (_req, res) => {
-    res.json({
-      code: 200,
-      message: 'Task stopped',
-    })
+  // Stop task
+  router.post('/api/tasks/:id/stop', async (req, res) => {
+    try {
+      const taskId = req.params.id
+
+      // 获取正在运行的执行记录
+      const execution = await db.get(
+        'SELECT id FROM task_executions WHERE taskId = ? AND status = ?',
+        [taskId, 'running']
+      )
+
+      if (execution) {
+        await taskExecutor!.stopExecution(execution.id)
+      }
+
+      // 更新任务状态
+      await db.run(
+        'UPDATE tasks SET status = ? WHERE id = ?',
+        ['paused', taskId]
+      )
+
+      res.json({
+        code: 200,
+        message: 'Task stopped',
+      })
+    } catch (error: any) {
+      res.status(500).json({
+        code: 500,
+        message: error.message,
+      })
+    }
   })
 
-  router.post('/api/tasks/:id/pause', async (_req, res) => {
-    res.json({
-      code: 200,
-      message: 'Task paused',
-    })
+  // Pause task
+  router.post('/api/tasks/:id/pause', async (req, res) => {
+    try {
+      const taskId = req.params.id
+
+      // 获取正在运行的执行记录
+      const execution = await db.get(
+        'SELECT id FROM task_executions WHERE taskId = ? AND status = ?',
+        [taskId, 'running']
+      )
+
+      if (execution) {
+        await taskExecutor!.stopExecution(execution.id)
+      }
+
+      // 更新任务状态
+      await db.run(
+        'UPDATE tasks SET status = ? WHERE id = ?',
+        ['paused', taskId]
+      )
+
+      res.json({
+        code: 200,
+        message: 'Task paused',
+      })
+    } catch (error: any) {
+      res.status(500).json({
+        code: 500,
+        message: error.message,
+      })
+    }
   })
 
-  router.post('/api/tasks/:id/resume', async (_req, res) => {
-    res.json({
-      code: 200,
-      message: 'Task resumed',
-    })
+  // Resume task
+  router.post('/api/tasks/:id/resume', async (req, res) => {
+    try {
+      const taskId = req.params.id
+
+      // 获取任务信息
+      const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId])
+      if (!task) {
+        return res.status(404).json({
+          code: 404,
+          message: 'Task not found',
+        })
+      }
+
+      if (task.status !== 'paused') {
+        return res.status(400).json({
+          code: 400,
+          message: 'Task is not paused',
+        })
+      }
+
+      // 获取代理列表
+      let proxies: any[] = []
+      if (task.proxyPoolId) {
+        proxies = await db.all(
+          'SELECT * FROM proxy_list WHERE poolId = ? AND isActive = 1',
+          [task.proxyPoolId]
+        )
+      }
+
+      // 解析任务配置
+      const taskData = {
+        ...task,
+        config: JSON.parse(task.config),
+      }
+
+      // 继续执行任务
+      const executionId = await taskExecutor!.executeTask(taskData, proxies)
+
+      res.json({
+        code: 200,
+        message: 'Task resumed',
+        data: { executionId },
+      })
+    } catch (error: any) {
+      res.status(500).json({
+        code: 500,
+        message: error.message,
+      })
+    }
   })
 
   return router
