@@ -5,7 +5,7 @@
   "main": "dist/main/index.js",
   "homepage": "./",
   "scripts": {
-    "dev": "vite",
+    "dev": "node run-dev.js",
     "build": "vite build",
     "preview": "vite preview",
     "pack": "electron-builder --dir",

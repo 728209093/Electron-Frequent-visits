@@ -1,6 +1,5 @@
 import React, { useState } from 'react'
 import {
-  Card,
   Button,
   Space,
   Form,
@@ -60,8 +59,8 @@ const defaultPopupConfig: PopupConfig = {
 const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) => {
   const config = value || defaultPopupConfig
   const [modalVisible, setModalVisible] = useState(false)
+  const [editingIndex, setEditingIndex] = useState(-1)
   const [editingRule, setEditingRule] = useState<PopupRule | null>(null)
-  const [editingIndex, setEditingIndex] = useState<number>(-1)
   const [form] = Form.useForm()
 
   const handleConfigChange = (newConfig: Partial<PopupConfig>) => {
@@ -100,16 +99,14 @@ const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) =>
     try {
       const values = await form.validateFields()
       const newRules = [...config.rules]
-      
+
       if (editingIndex >= 0) {
         newRules[editingIndex] = values
       } else {
         newRules.push(values)
       }
-      
-      // 按优先级排序
+
       newRules.sort((a, b) => a.priority - b.priority)
-      
       handleConfigChange({ rules: newRules })
       setModalVisible(false)
     } catch (error) {
@@ -119,23 +116,26 @@ const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) =>
 
   const handleUsePreset = (presetKey: string) => {
     const preset = (POPUP_PRESETS as any)[presetKey]
-    if (preset) {
-      // 检查是否已存在同名规则
-      const exists = config.rules.some(r => r.name === preset.name)
-      if (exists) {
-        Modal.warning({
-          title: '规则已存在',
-          content: `已存在名为"${preset.name}"的规则`,
-        })
-        return
-      }
-      
-      const newRule: PopupRule = {
-        ...preset,
-        priority: config.rules.length + 1,
-      }
-      handleConfigChange({ rules: [...config.rules, newRule] })
+    if (!preset) return
+
+    const exists = config.rules.some(rule => rule.name === preset.name)
+    if (exists) {
+      Modal.warning({
+        title: '规则已存在',
+        content: `已存在名为“${preset.name}”的规则`,
+      })
+      return
     }
+
+    handleConfigChange({
+      rules: [
+        ...config.rules,
+        {
+          ...preset,
+          priority: config.rules.length + 1,
+        },
+      ],
+    })
   }
 
   return (
@@ -154,7 +154,7 @@ const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) =>
         <>
           <Row gutter={16} style={{ marginBottom: 16 }}>
             <Col span={8}>
-              <Form.Item label="等待超时(ms)" style={{ marginBottom: 0 }}>
+              <Form.Item label="等待超时 (ms)" style={{ marginBottom: 0 }}>
                 <InputNumber
                   value={config.waitTimeout}
                   onChange={(v) => handleConfigChange({ waitTimeout: v || 5000 })}
@@ -165,29 +165,29 @@ const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) =>
               </Form.Item>
             </Col>
             <Col span={16}>
-              <Form.Item label="点击后延迟(ms)" style={{ marginBottom: 0 }}>
-                <Input.Group compact>
+              <Form.Item label="点击后延迟 (ms)" style={{ marginBottom: 0 }}>
+                <Space.Compact style={{ width: '100%' }}>
                   <InputNumber
                     value={config.afterClickDelay[0]}
-                    onChange={(v) => handleConfigChange({ 
-                      afterClickDelay: [v || 500, config.afterClickDelay[1]] 
+                    onChange={(v) => handleConfigChange({
+                      afterClickDelay: [v || 500, config.afterClickDelay[1]],
                     })}
                     min={0}
                     max={10000}
-                    placeholder="最小"
+                    placeholder="最小值"
                     style={{ width: '50%' }}
                   />
                   <InputNumber
                     value={config.afterClickDelay[1]}
-                    onChange={(v) => handleConfigChange({ 
-                      afterClickDelay: [config.afterClickDelay[0], v || 1500] 
+                    onChange={(v) => handleConfigChange({
+                      afterClickDelay: [config.afterClickDelay[0], v || 1500],
                     })}
                     min={0}
                     max={10000}
-                    placeholder="最大"
+                    placeholder="最大值"
                     style={{ width: '50%' }}
                   />
-                </Input.Group>
+                </Space.Compact>
               </Form.Item>
             </Col>
           </Row>
@@ -208,45 +208,31 @@ const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) =>
               </Button>
               <Divider type="vertical" />
               <Text type="secondary">快速添加预设：</Text>
-              <Button 
-                size="small" 
-                icon={<ThunderboltOutlined />}
-                onClick={() => handleUsePreset('AGE_VERIFICATION')}
-              >
+              <Button size="small" icon={<ThunderboltOutlined />} onClick={() => handleUsePreset('AGE_VERIFICATION')}>
                 年龄验证
               </Button>
-              <Button 
-                size="small" 
-                icon={<ThunderboltOutlined />}
-                onClick={() => handleUsePreset('COOKIE_CONSENT')}
-              >
-                Cookie同意
+              <Button size="small" icon={<ThunderboltOutlined />} onClick={() => handleUsePreset('COOKIE_CONSENT')}>
+                Cookie 同意
               </Button>
-              <Button 
-                size="small" 
-                icon={<ThunderboltOutlined />}
-                onClick={() => handleUsePreset('SUBSCRIPTION_POPUP')}
-              >
+              <Button size="small" icon={<ThunderboltOutlined />} onClick={() => handleUsePreset('SUBSCRIPTION_POPUP')}>
                 订阅弹窗
               </Button>
-              <Button 
-                size="small" 
-                icon={<ThunderboltOutlined />}
-                onClick={() => handleUsePreset('AD_POPUP')}
-              >
+              <Button size="small" icon={<ThunderboltOutlined />} onClick={() => handleUsePreset('AD_POPUP')}>
                 广告弹窗
               </Button>
             </Space>
           </div>
 
           {config.rules.length === 0 ? (
-            <div style={{ 
-              padding: '40px', 
-              textAlign: 'center', 
-              background: '#fafafa', 
-              borderRadius: '8px',
-              border: '1px dashed #d9d9d9'
-            }}>
+            <div
+              style={{
+                padding: '40px',
+                textAlign: 'center',
+                background: '#fafafa',
+                borderRadius: '8px',
+                border: '1px dashed #d9d9d9',
+              }}
+            >
               <Text type="secondary">暂无弹窗规则，点击上方按钮添加</Text>
             </div>
           ) : (
@@ -254,22 +240,18 @@ const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) =>
               dataSource={config.rules}
               renderItem={(rule, index) => (
                 <List.Item
-                  style={{ 
-                    background: '#fafafa', 
-                    marginBottom: 8, 
+                  style={{
+                    background: '#fafafa',
+                    marginBottom: 8,
                     padding: '12px 16px',
-                    borderRadius: '8px'
+                    borderRadius: '8px',
                   }}
                   actions={[
-                    <Button 
-                      type="text" 
-                      icon={<EditOutlined />} 
-                      onClick={() => handleEditRule(rule, index)}
-                    >
+                    <Button type="text" icon={<EditOutlined />} onClick={() => handleEditRule(rule, index)}>
                       编辑
                     </Button>,
                     <Popconfirm
-                      title="确定删除此规则？"
+                      title="确定删除这条规则吗？"
                       onConfirm={() => handleDeleteRule(index)}
                       okText="确定"
                       cancelText="取消"
@@ -277,18 +259,18 @@ const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) =>
                       <Button type="text" danger icon={<DeleteOutlined />}>
                         删除
                       </Button>
-                    </Popconfirm>
+                    </Popconfirm>,
                   ]}
                 >
                   <List.Item.Meta
-                    title={
+                    title={(
                       <Space>
                         <Tag color="blue">优先级 {rule.priority}</Tag>
                         <span>{rule.name}</span>
-                        {rule.required && <Tag color="red">必须</Tag>}
+                        {rule.required && <Tag color="red">必需</Tag>}
                       </Space>
-                    }
-                    description={
+                    )}
+                    description={(
                       <Space direction="vertical" size={4} style={{ marginTop: 8 }}>
                         {rule.buttonTexts && rule.buttonTexts.length > 0 && (
                           <div>
@@ -300,9 +282,9 @@ const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) =>
                         )}
                         {rule.buttonSelectors && rule.buttonSelectors.length > 0 && (
                           <div>
-                            <Text type="secondary">CSS选择器：</Text>
-                            {rule.buttonSelectors.slice(0, 3).map((sel, i) => (
-                              <Tag key={i} color="geekblue" style={{ marginLeft: 4 }}>{sel}</Tag>
+                            <Text type="secondary">CSS 选择器：</Text>
+                            {rule.buttonSelectors.slice(0, 3).map((selector, i) => (
+                              <Tag key={i} color="geekblue" style={{ marginLeft: 4 }}>{selector}</Tag>
                             ))}
                             {rule.buttonSelectors.length > 3 && (
                               <Tag>+{rule.buttonSelectors.length - 3} 更多</Tag>
@@ -310,7 +292,7 @@ const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) =>
                           </div>
                         )}
                       </Space>
-                    }
+                    )}
                   />
                 </List.Item>
               )}
@@ -319,7 +301,6 @@ const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) =>
         </>
       )}
 
-      {/* 规则编辑弹窗 */}
       <Modal
         title={editingRule ? '编辑弹窗规则' : '添加弹窗规则'}
         open={modalVisible}
@@ -335,57 +316,57 @@ const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) =>
             name="name"
             rules={[{ required: true, message: '请输入规则名称' }]}
           >
-            <Input placeholder="如：年龄验证、Cookie同意" />
+            <Input placeholder="例如：年龄验证、Cookie 同意" />
           </Form.Item>
 
           <Form.Item
-            label={
+            label={(
               <Space>
                 按钮文本匹配
-                <Tooltip title="通过按钮上的文字来查找并点击，支持多个文本（按顺序尝试）">
+                <Tooltip title="通过按钮上的文字查找并点击，支持多个文本并按顺序尝试">
                   <QuestionCircleOutlined />
                 </Tooltip>
               </Space>
-            }
+            )}
             name="buttonTexts"
           >
             <Select
               mode="tags"
-              placeholder="输入按钮文本，按回车添加（如：是、确认、同意）"
+              placeholder="输入按钮文本，按回车添加"
               tokenSeparators={[',']}
             />
           </Form.Item>
 
           <Form.Item
-            label={
+            label={(
               <Space>
-                按钮CSS选择器
-                <Tooltip title="直接通过CSS选择器定位按钮，适合有固定class或id的按钮">
+                按钮 CSS 选择器
+                <Tooltip title="通过 CSS 选择器定位按钮，适合有固定 class 或 id 的元素">
                   <QuestionCircleOutlined />
                 </Tooltip>
               </Space>
-            }
+            )}
             name="buttonSelectors"
           >
             <Select
               mode="tags"
-              placeholder="输入CSS选择器，按回车添加（如：.btn-confirm, #agree-btn）"
+              placeholder="输入 CSS 选择器，按回车添加"
               tokenSeparators={[',']}
             />
           </Form.Item>
 
           <Form.Item
-            label={
+            label={(
               <Space>
                 弹窗容器选择器（可选）
-                <Tooltip title="用于检测弹窗是否存在，如果不填则直接尝试点击按钮">
+                <Tooltip title="用于辅助判断弹窗是否存在，不填时会直接尝试点击按钮">
                   <QuestionCircleOutlined />
                 </Tooltip>
               </Space>
-            }
+            )}
             name="containerSelector"
           >
-            <Input placeholder="如：.modal, #popup-container" />
+            <Input placeholder="例如：.modal, #popup-container" />
           </Form.Item>
 
           <Row gutter={16}>
@@ -400,14 +381,14 @@ const PopupRuleConfig: React.FC<PopupRuleConfigProps> = ({ value, onChange }) =>
             </Col>
             <Col span={12}>
               <Form.Item
-                label={
+                label={(
                   <Space>
                     必须处理
-                    <Tooltip title="如果开启，弹窗未找到时会报错">
+                    <Tooltip title="开启后，如果没有找到这个弹窗，将视为失败">
                       <QuestionCircleOutlined />
                     </Tooltip>
                   </Space>
-                }
+                )}
                 name="required"
                 valuePropName="checked"
               >

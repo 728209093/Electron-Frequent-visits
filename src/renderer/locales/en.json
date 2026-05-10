@@ -27,6 +27,8 @@
     "completed": "Completed",
     "pending": "Pending",
     "running": "Running",
+    "draft": "Draft",
+    "failed": "Failed",
     "deleteConfirm": "Delete Confirmation",
     "loadFailed": "Failed to load data",
     "saveFailed": "Failed to save",
@@ -80,16 +82,32 @@
     "started": "Task started",
     "paused": "Task paused",
     "name": "Task Name",
+    "namePlaceholder": "Enter task name",
+    "targetUrl": "Target URL",
+    "totalCount": "Total Visits",
     "description": "Description",
     "projectRequired": "Please select a project",
     "nameRequired": "Please enter task name",
-    "concurrency": "Concurrent Requests",
+    "concurrency": "Concurrency",
+    "delayRange": "Delay Range",
     "delayBetweenRequests": "Delay Between Requests (ms)",
     "basicConfig": "Basic Configuration",
     "proxyConfig": "Proxy Configuration",
     "proxyPool": "Proxy Pool",
     "behaviorConfig": "Behavior Configuration",
     "userAgent": "User Agent",
+    "userAgentStrategy": "User-Agent Strategy",
+    "stayDuration": "Stay Duration",
+    "scrollDirection": "Scroll Direction",
+    "scrollCount": "Scroll Count",
+    "scrollDistance": "Scroll Distance (px)",
+    "scrollInterval": "Scroll Interval",
+    "bottomPauseDuration": "Bottom Pause Duration",
+    "clickProbability": "Click Probability",
+    "maxClicks": "Max Clicks",
+    "movePoints": "Mouse Move Points",
+    "typingSpeed": "Typing Speed (ms/char)",
+    "inputProbability": "Input Probability",
     "deleteConfirmMessage": "Are you sure you want to delete this task?"
   },
   "proxies": {
@@ -183,6 +201,6 @@
   },
   "languages": {
     "en": "English",
-    "zh": "中文"
+    "zh": "Chinese"
   }
 }

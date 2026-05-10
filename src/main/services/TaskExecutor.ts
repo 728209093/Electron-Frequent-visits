@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { Database } from '../database/Database'
 import { Task, Proxy } from '../../shared/types'
 import { BrowserService } from './BrowserService'
+import { ExternalBrowserService } from './ExternalBrowserService'
 
 export interface ExecutionProgress {
   executionId: string
@@ -23,9 +24,6 @@ export class TaskExecutor {
     this.db = db
   }
 
-  /**
-   * 执行任务
-   */
   async executeTask(
     task: Task,
     proxies: Proxy[],
@@ -38,7 +36,6 @@ export class TaskExecutor {
       this.addProgressCallback(executionId, onProgress)
     }
 
-    // 异步执行任务
     this.runExecution(executionId, task, proxies).catch((error) => {
       console.error(`[TaskExecutor] Execution ${executionId} failed:`, error)
     })
@@ -46,12 +43,9 @@ export class TaskExecutor {
     return executionId
   }
 
-  /**
-   * 停止执行
-   */
   async stopExecution(executionId: string): Promise<void> {
     this.runningExecutions.set(executionId, false)
-    
+
     await this.updateExecution(executionId, 'stopped', {
       totalRequests: 0,
       successCount: 0,
@@ -59,9 +53,6 @@ export class TaskExecutor {
     })
   }
 
-  /**
-   * 运行任务执行
-   */
   private async runExecution(
     executionId: string,
     task: Task,
@@ -75,33 +66,26 @@ export class TaskExecutor {
     console.log(`[TaskExecutor] Starting execution ${executionId}, remaining: ${remaining}`)
 
     try {
-      // 更新任务状态
       await this.db.run(
         'UPDATE tasks SET status = ? WHERE id = ?',
         ['running', task.id]
       )
 
       for (let i = 0; i < remaining; i++) {
-        // 检查是否被停止
         if (!this.runningExecutions.get(executionId)) {
           console.log(`[TaskExecutor] Execution ${executionId} stopped`)
           break
         }
 
-        // 选择代理（轮换策略）
         const proxy = proxies.length > 0 ? proxies[i % proxies.length] : undefined
-        
-        // 创建浏览器服务
-        const browserService = new BrowserService(task.config, proxy)
-        
-        try {
-          // 启动浏览器
-          await browserService.launch()
+        const browserService = task.config.useHeadless
+          ? new BrowserService(task.config, proxy)
+          : new ExternalBrowserService(task.config)
 
-          // 访问目标 URL
+        try {
+          await browserService.launch()
           const result = await browserService.visit(task.targetUrl)
 
-          // 记录日志
           await this.recordLog(
             executionId,
             proxy ? `${proxy.host}:${proxy.port}` : undefined,
@@ -118,64 +102,73 @@ export class TaskExecutor {
             failureCount++
           }
 
-          // 更新进度
-          const progress: ExecutionProgress = {
+          const averageResponseTime = responseTimes.length > 0
+            ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length
+            : undefined
+
+          await this.updateExecution(executionId, 'running', {
+            totalRequests: i + 1,
+            successCount,
+            failureCount,
+            averageResponseTime,
+          })
+
+          await this.updateTaskProgress(task.id, task.completeCount + i + 1)
+
+          this.notifyProgress(executionId, {
             executionId,
             current: i + 1,
             total: remaining,
             successCount,
             failureCount,
             status: 'running',
-          }
-          this.notifyProgress(executionId, progress)
-
-          // 更新任务完成数
-          await this.updateTaskProgress(task.id, task.completeCount + i + 1)
-
+          })
         } finally {
           await browserService.close()
         }
 
-        // 请求间延迟
         const [minDelay, maxDelay] = task.config.delayRange
         const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay
         await this.sleep(delay)
       }
 
-      // 计算平均响应时间
-      const avgResponseTime = responseTimes.length > 0
+      const averageResponseTime = responseTimes.length > 0
         ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length
         : undefined
 
-      // 更新执行记录
       const finalStatus = this.runningExecutions.get(executionId) ? 'completed' : 'stopped'
       await this.updateExecution(executionId, finalStatus, {
         totalRequests: remaining,
         successCount,
         failureCount,
-        averageResponseTime: avgResponseTime,
+        averageResponseTime,
       })
 
-      // 更新任务状态
       await this.db.run(
         'UPDATE tasks SET status = ? WHERE id = ?',
         [finalStatus === 'completed' ? 'completed' : 'paused', task.id]
       )
 
-      // 通知最终进度
-      const finalProgress: ExecutionProgress = {
+      this.notifyProgress(executionId, {
         executionId,
         current: remaining,
         total: remaining,
         successCount,
         failureCount,
-        status: finalStatus as any,
-      }
-      this.notifyProgress(executionId, finalProgress)
-
+        status: finalStatus as ExecutionProgress['status'],
+      })
     } catch (error: any) {
       console.error(`[TaskExecutor] Execution ${executionId} error:`, error)
-      
+
+      await this.recordLog(
+        executionId,
+        undefined,
+        undefined,
+        undefined,
+        false,
+        error?.message || String(error)
+      )
+
       await this.updateExecution(executionId, 'failed', {
         totalRequests: 0,
         successCount,
@@ -201,9 +194,6 @@ export class TaskExecutor {
     }
   }
 
-  /**
-   * 添加进度回调
-   */
   private addProgressCallback(executionId: string, callback: ProgressCallback): void {
     if (!this.progressCallbacks.has(executionId)) {
       this.progressCallbacks.set(executionId, [])
@@ -211,9 +201,6 @@ export class TaskExecutor {
     this.progressCallbacks.get(executionId)!.push(callback)
   }
 
-  /**
-   * 通知进度更新
-   */
   private notifyProgress(executionId: string, progress: ExecutionProgress): void {
     const callbacks = this.progressCallbacks.get(executionId)
     if (callbacks) {
@@ -221,9 +208,6 @@ export class TaskExecutor {
     }
   }
 
-  /**
-   * 创建执行记录
-   */
   async createExecution(taskId: string): Promise<string> {
     const executionId = uuidv4()
     const now = Date.now()
@@ -238,9 +222,6 @@ export class TaskExecutor {
     return executionId
   }
 
-  /**
-   * 记录执行日志
-   */
   async recordLog(
     executionId: string,
     ipUsed: string | undefined,
@@ -270,9 +251,6 @@ export class TaskExecutor {
     )
   }
 
-  /**
-   * 更新执行记录
-   */
   async updateExecution(
     executionId: string,
     status: string,
@@ -283,7 +261,7 @@ export class TaskExecutor {
       averageResponseTime?: number
     }
   ): Promise<void> {
-    const endTime = Date.now()
+    const endTime = status === 'running' ? null : Date.now()
 
     await this.db.run(
       `UPDATE task_executions SET
@@ -302,22 +280,13 @@ export class TaskExecutor {
     )
   }
 
-  /**
-   * 更新任务进度
-   */
-  async updateTaskProgress(
-    taskId: string,
-    completeCount: number
-  ): Promise<void> {
+  async updateTaskProgress(taskId: string, completeCount: number): Promise<void> {
     await this.db.run(
-      `UPDATE tasks SET completeCount = ? WHERE id = ?`,
+      'UPDATE tasks SET completeCount = ? WHERE id = ?',
       [completeCount, taskId]
     )
   }
 
-  /**
-   * 工具方法：延迟
-   */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
   }

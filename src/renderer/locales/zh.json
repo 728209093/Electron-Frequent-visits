@@ -22,7 +22,7 @@
     "reset": "重置",
     "start": "启动",
     "pause": "暂停",
-    "active": "运行中",
+    "active": "启用",
     "paused": "已暂停",
     "completed": "已完成",
     "pending": "待处理",
@@ -36,7 +36,7 @@
     "actionFailed": "操作失败"
   },
   "sidebar": {
-    "dashboard": "仪表板",
+    "dashboard": "仪表盘",
     "projects": "项目",
     "tasks": "任务",
     "proxies": "代理管理",
@@ -44,17 +44,17 @@
     "settings": "设置"
   },
   "dashboard": {
-    "title": "仪表板",
+    "title": "仪表盘",
     "totalProjects": "项目总数",
     "runningTasks": "运行中任务",
     "completedToday": "今日完成",
     "failedTasks": "失败任务",
-    "quickActions": "快速操作",
+    "quickActions": "快捷操作",
     "createProject": "创建新项目",
     "manageProxies": "管理代理",
     "viewAnalytics": "查看分析",
     "recentActivity": "最近活动",
-    "noActivities": "还没有活动。从创建新项目开始吧！"
+    "noActivities": "还没有活动，从创建新项目开始吧。"
   },
   "projects": {
     "title": "项目",
@@ -64,13 +64,13 @@
     "updated": "项目更新成功",
     "deleted": "项目删除成功",
     "name": "项目名称",
-    "url": "网站URL",
+    "url": "网站 URL",
     "description": "描述",
     "targetTraffic": "目标流量",
     "nameRequired": "请输入项目名称",
-    "urlRequired": "请输入网站URL",
+    "urlRequired": "请输入网站 URL",
     "trafficRequired": "请输入目标流量",
-    "deleteConfirmMessage": "确定要删除此项目吗？此操作无法撤销。"
+    "deleteConfirmMessage": "确定要删除这个项目吗？此操作不可撤销。"
   },
   "tasks": {
     "title": "任务",
@@ -82,8 +82,8 @@
     "started": "任务已启动",
     "paused": "任务已暂停",
     "name": "任务名称",
-    "namePlaceholder": "输入任务名称",
-    "targetUrl": "目标URL",
+    "namePlaceholder": "请输入任务名称",
+    "targetUrl": "目标 URL",
     "totalCount": "总访问次数",
     "description": "描述",
     "projectRequired": "请选择项目",
@@ -91,7 +91,7 @@
     "concurrency": "并发数",
     "delayRange": "请求间隔范围",
     "delayBetweenRequests": "请求间隔延迟 (ms)",
-    "basicConfig": "基本配置",
+    "basicConfig": "基础配置",
     "proxyConfig": "代理配置",
     "proxyPool": "代理池",
     "behaviorConfig": "行为配置",
@@ -108,7 +108,7 @@
     "movePoints": "鼠标移动轨迹点数",
     "typingSpeed": "打字速度 (ms/字符)",
     "inputProbability": "输入概率",
-    "deleteConfirmMessage": "确定要删除此任务吗？"
+    "deleteConfirmMessage": "确定要删除这个任务吗？"
   },
   "proxies": {
     "title": "代理",
@@ -130,9 +130,9 @@
     "description": "描述",
     "nameRequired": "请输入代理池名称",
     "selectPool": "请先选择代理池",
-    "selectPoolFirst": "请先从左侧选项卡中选择代理池",
+    "selectPoolFirst": "请先从左侧标签中选择代理池",
     "port": "端口",
-    "portRequired": "请输入端口号",
+    "portRequired": "请输入端口",
     "username": "用户名",
     "password": "密码",
     "verify": "验证",
@@ -149,7 +149,7 @@
     "info": "信息",
     "logs": "日志",
     "statistics": "统计",
-    "exportReport": "导出报表",
+    "exportReport": "导出报告",
     "totalRequests": "总请求数",
     "successfulRequests": "成功请求数",
     "failedRequests": "失败请求数",
@@ -160,7 +160,7 @@
     "successCount": "成功数",
     "failedCount": "失败数",
     "timestamp": "时间戳",
-    "level": "等级",
+    "level": "级别",
     "message": "消息",
     "viewDetails": "查看详情",
     "completed": "已完成",
@@ -192,12 +192,12 @@
     "logs": "日志",
     "logsLocation": "日志位置",
     "openLogsFolder": "打开日志文件夹",
-    "description": "一个强大的 Electron 桌面应用程序，用于自动化网站流量增强，具有 IP 代理轮转和并发任务管理功能。",
+    "description": "一个强大的 Electron 桌面应用，用于自动化网站流量访问，支持 IP 代理轮换和并发任务管理。",
     "features": "主要功能",
     "feature1": "多任务并发执行",
-    "feature2": "内置 IP 代理自动轮转",
+    "feature2": "内置 IP 代理自动轮换",
     "feature3": "完整的浏览器行为模拟",
-    "feature4": "双语界面支持"
+    "feature4": "中英文双语界面"
   },
   "languages": {
     "en": "English",

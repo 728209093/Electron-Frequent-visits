@@ -1,7 +1,11 @@
 import { Router } from 'express'
 import { Database } from '../../database/Database'
 import { v4 as uuidv4 } from 'uuid'
-import { DEFAULT_TASK_CONFIG } from '../../../shared/constants'
+import {
+  DEFAULT_TASK_CONFIG,
+  mergeTaskConfig,
+  sanitizeTargetUrl,
+} from '../../../shared/constants'
 import { TaskExecutor } from '../../services/TaskExecutor'
 
 // 全局任务执行器实例
@@ -35,7 +39,8 @@ export function taskRoutes(db: Database) {
         message: 'Success',
         data: tasks.map((task: any) => ({
           ...task,
-          config: JSON.parse(task.config),
+          targetUrl: sanitizeTargetUrl(task.targetUrl),
+          config: mergeTaskConfig(JSON.parse(task.config)),
         })),
       })
     } catch (error: any) {
@@ -65,7 +70,8 @@ export function taskRoutes(db: Database) {
         message: 'Success',
         data: {
           ...task,
-          config: JSON.parse(task.config),
+          targetUrl: sanitizeTargetUrl(task.targetUrl),
+          config: mergeTaskConfig(JSON.parse(task.config)),
         },
       })
     } catch (error: any) {
@@ -91,7 +97,9 @@ export function taskRoutes(db: Database) {
         config = DEFAULT_TASK_CONFIG,
       } = req.body
 
-      if (!projectId || !name || !targetUrl || !totalCount) {
+      const sanitizedUrl = sanitizeTargetUrl(targetUrl)
+
+      if (!projectId || !name || !sanitizedUrl || !totalCount) {
         return res.status(400).json({
           code: 400,
           message: 'Missing required fields',
@@ -100,6 +108,8 @@ export function taskRoutes(db: Database) {
 
       const id = uuidv4()
       const now = Date.now()
+
+      const normalizedConfig = mergeTaskConfig(config)
 
       await db.run(
         `INSERT INTO tasks (
@@ -110,13 +120,13 @@ export function taskRoutes(db: Database) {
           id,
           projectId,
           name,
-          targetUrl,
+          sanitizedUrl,
           proxyPoolId || null,
           concurrency,
           totalCount,
           scheduleType,
           scheduleTime || null,
-          JSON.stringify(config),
+          JSON.stringify(normalizedConfig),
           now,
           now,
         ]
@@ -128,7 +138,8 @@ export function taskRoutes(db: Database) {
         message: 'Task created successfully',
         data: {
           ...task,
-          config: JSON.parse(task.config),
+          targetUrl: sanitizeTargetUrl(task.targetUrl),
+          config: mergeTaskConfig(JSON.parse(task.config)),
         },
       })
     } catch (error: any) {
@@ -145,6 +156,9 @@ export function taskRoutes(db: Database) {
       const { name, targetUrl, proxyPoolId, concurrency, totalCount, config } =
         req.body
       const now = Date.now()
+      const sanitizedUrl = sanitizeTargetUrl(targetUrl)
+
+      const normalizedConfig = mergeTaskConfig(config)
 
       await db.run(
         `UPDATE tasks SET
@@ -153,11 +167,11 @@ export function taskRoutes(db: Database) {
         WHERE id = ?`,
         [
           name,
-          targetUrl,
+          sanitizedUrl,
           proxyPoolId || null,
           concurrency,
           totalCount,
-          JSON.stringify(config || DEFAULT_TASK_CONFIG),
+          JSON.stringify(normalizedConfig || DEFAULT_TASK_CONFIG),
           now,
           req.params.id,
         ]
@@ -178,7 +192,8 @@ export function taskRoutes(db: Database) {
         message: 'Task updated successfully',
         data: {
           ...task,
-          config: JSON.parse(task.config),
+          targetUrl: sanitizeTargetUrl(task.targetUrl),
+          config: mergeTaskConfig(JSON.parse(task.config)),
         },
       })
     } catch (error: any) {
@@ -239,7 +254,8 @@ export function taskRoutes(db: Database) {
       // 解析任务配置
       const taskData = {
         ...task,
-        config: JSON.parse(task.config),
+        targetUrl: sanitizeTargetUrl(task.targetUrl),
+        config: mergeTaskConfig(JSON.parse(task.config)),
       }
 
       // 执行任务
@@ -357,7 +373,8 @@ export function taskRoutes(db: Database) {
       // 解析任务配置
       const taskData = {
         ...task,
-        config: JSON.parse(task.config),
+        targetUrl: sanitizeTargetUrl(task.targetUrl),
+        config: mergeTaskConfig(JSON.parse(task.config)),
       }
 
       // 继续执行任务
