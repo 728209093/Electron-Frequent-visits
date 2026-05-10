@@ -2,18 +2,14 @@
   "name": "traffic-booster",
   "version": "1.0.0",
   "description": "A desktop application for automated website traffic boosting with proxy rotation and behavior simulation",
-  "main": "dist/main/main/index.js",
+  "main": "dist/main/index.js",
   "homepage": "./",
   "scripts": {
-    "dev": "concurrently --prefix none \"npm run dev:main\" \"npm run dev:renderer\"",
-    "dev:main": "cross-env NODE_ENV=development tsc --watch --project tsconfig.main.json",
-    "dev:renderer": "vite",
-    "build": "npm run build:main && npm run build:renderer",
-    "build:main": "tsc --project tsconfig.main.json",
-    "build:renderer": "vite build",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "start": "electron dist/main/main/index.js",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -26,12 +22,13 @@
     "echarts": "^5.4.3",
     "express": "^4.18.2",
     "i18next": "^23.7.0",
+    "playwright": "^1.59.1",
     "puppeteer": "^21.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-i18next": "^13.5.0",
     "react-redux": "^8.1.3",
-    "sqlite3": "^5.1.6",
+    "sql.js": "^1.10.3",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
@@ -40,12 +37,13 @@
     "@types/node": "^20.9.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "@types/sql.js": "^1.4.9",
     "@types/uuid": "^9.0.7",
     "@vitejs/plugin-react": "^4.2.0",
     "autoprefixer": "^10.4.16",
     "concurrently": "^8.2.1",
     "cross-env": "^7.0.3",
-    "electron": "^27.0.0",
+    "electron": "^27.3.11",
     "electron-builder": "^24.6.4",
     "less": "^4.2.0",
     "less-loader": "^12.2.0",
@@ -54,7 +52,9 @@
     "tsc-alias": "^1.8.8",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.2.2",
-    "vite": "^5.0.0"
+    "vite": "^5.0.0",
+    "vite-plugin-electron": "^0.29.1",
+    "vite-plugin-electron-renderer": "^0.14.7"
   },
   "author": "Your Name",
   "license": "MIT"

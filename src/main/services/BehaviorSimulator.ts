@@ -1,9 +1,8 @@
-import { Page } from 'puppeteer'
-import { BehaviorConfig } from '../../shared/types'
+import { Page } from 'playwright'
+import { BehaviorConfig, PopupRule } from '../../shared/types'
 
 /**
- * 浏览器行为模拟器
- * 用于模拟真实用户的浏览行为，包括滚动、点击、鼠标移动、输入等
+ * 浏览器行为模拟器 (Playwright 版本)
  */
 export class BehaviorSimulator {
   private page: Page
@@ -15,94 +14,212 @@ export class BehaviorSimulator {
   }
 
   /**
-   * 执行所有行为模拟
+   * 执行所有行为模拟（不包含弹窗处理，弹窗由油猴脚本负责）
    */
   async simulate(): Promise<void> {
-    const behaviors = []
+    const behaviors: (() => Promise<void>)[] = []
 
     // 1. 页面停留
-    behaviors.push(this.stayOnPage())
+    behaviors.push(() => this.stayOnPage())
 
     // 2. 鼠标移动
-    if (this.config.mouseMove.enabled) {
-      behaviors.push(this.simulateMouseMove())
+    if (this.config.mouseMove?.enabled) {
+      behaviors.push(() => this.simulateMouseMove())
     }
 
     // 3. 滚动
-    if (this.config.scroll.enabled) {
-      behaviors.push(this.simulateScroll())
+    if (this.config.scroll?.enabled) {
+      behaviors.push(() => this.simulateScroll())
     }
 
     // 4. 点击
-    if (this.config.click.enabled && this.config.click.selectors.length > 0) {
-      behaviors.push(this.simulateClick())
+    if (this.config.click?.enabled && this.config.click.selectors?.length > 0) {
+      behaviors.push(() => this.simulateClick())
     }
 
     // 5. 输入
-    if (this.config.input.enabled && this.config.input.selectors.length > 0) {
-      behaviors.push(this.simulateInput())
+    if (this.config.input?.enabled && this.config.input.selectors?.length > 0) {
+      behaviors.push(() => this.simulateInput())
     }
 
-    // 随机顺序执行或顺序执行
-    if (this.config.randomOrder) {
-      const shuffled = this.shuffleArray(behaviors)
-      for (const behavior of shuffled) {
-        await behavior
-      }
-    } else {
-      // 先停留，再执行其他行为
-      await behaviors[0]
-      for (let i = 1; i < behaviors.length; i++) {
-        await behaviors[i]
+    // 随机或顺序执行
+    const list = this.config.randomOrder ? this.shuffleArray(behaviors) : behaviors
+    for (const fn of list) {
+      await fn()
+    }
+  }
+
+  /**
+   * 处理所有弹窗规则
+   */
+  async handlePopups(): Promise<void> {
+    const popupConfig = this.config.popup
+    if (!popupConfig) return
+
+    console.log(`[Behavior] Handling popups, rules: ${popupConfig.rules.length}`)
+
+    const sortedRules = [...popupConfig.rules].sort((a, b) => a.priority - b.priority)
+
+    for (const rule of sortedRules) {
+      try {
+        const handled = await this.handleSinglePopup(rule)
+        if (handled) {
+          const delay = this.randomBetween(
+            popupConfig.afterClickDelay[0],
+            popupConfig.afterClickDelay[1]
+          )
+          await this.delay(delay)
+        }
+      } catch (error) {
+        console.error(`[Behavior] Error handling popup "${rule.name}":`, error)
+        if (rule.required) throw error
       }
     }
   }
 
   /**
-   * 页面停留
+   * 处理单个弹窗 - 移植油猴脚本逻辑
    */
+  private async handleSinglePopup(rule: PopupRule): Promise<boolean> {
+    console.log(`[Behavior] Checking popup: ${rule.name}`)
+
+    // 等待 Vue/React 渲染完成
+    await this.delay(1500)
+
+    const selectors = rule.buttonSelectors || []
+    const texts = rule.buttonTexts || []
+
+    // 先打印页面当前状态，帮助诊断
+    const pageInfo = await this.page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('button'))
+      return {
+        url: window.location.href,
+        buttonCount: btns.length,
+        buttons: btns.slice(0, 10).map(b => ({
+          class: b.className,
+          text: (b.innerText || '').trim().substring(0, 30),
+          visible: b.getBoundingClientRect().width > 0,
+        })),
+        answerBtns: Array.from(document.querySelectorAll('button.answer-btn-yes-inline')).length,
+      }
+    })
+    console.log(`[Behavior] Page info:`, JSON.stringify(pageInfo))
+
+    // 注入油猴同款轮询逻辑，最多轮询 15 秒
+    const clicked = await this.page.evaluate(
+      ({ selectors, texts }) => {
+        return new Promise<boolean>((resolve) => {
+          let done = false
+          let attempts = 0
+          const maxAttempts = 30 // 每500ms一次，最多15秒
+
+          function clickReal(btn: HTMLElement) {
+            const rect = btn.getBoundingClientRect()
+            const x = rect.left + rect.width / 2
+            const y = rect.top + rect.height / 2
+            ;['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(type => {
+              btn.dispatchEvent(new MouseEvent(type, {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: x,
+                clientY: y,
+              }))
+            })
+            btn.click()
+            console.log(`[Inject] Clicked button: ${btn.className} text="${btn.innerText?.trim()}"`)
+          }
+
+          const timer = setInterval(() => {
+            if (done || attempts >= maxAttempts) {
+              clearInterval(timer)
+              resolve(done)
+              return
+            }
+            attempts++
+            console.log(`[Inject] Attempt ${attempts}/${maxAttempts}`)
+
+            // 1. CSS 选择器 + 文本过滤
+            for (const sel of selectors) {
+              try {
+                const btns = Array.from(document.querySelectorAll(sel)) as HTMLElement[]
+                const targets = texts.length > 0
+                  ? btns.filter(b => texts.includes((b.innerText || '').trim()))
+                  : btns.filter(b => b.getBoundingClientRect().width > 0)
+
+                if (targets.length > 0) {
+                  clickReal(targets[targets.length - 1])
+                  done = true
+                  clearInterval(timer)
+                  resolve(true)
+                  return
+                }
+              } catch (e) {
+                console.log(`[Inject] Selector error: ${e}`)
+              }
+            }
+
+            // 2. 纯文本匹配兜底
+            for (const text of texts) {
+              const all = Array.from(document.querySelectorAll('button, a, span, div')) as HTMLElement[]
+              const match = all.find(el => (el.innerText || el.textContent || '').trim() === text)
+              if (match && match.getBoundingClientRect().width > 0) {
+                clickReal(match)
+                done = true
+                clearInterval(timer)
+                resolve(true)
+                return
+              }
+            }
+          }, 500)
+        })
+      },
+      { selectors, texts }
+    )
+
+    if (clicked) {
+      console.log(`[Behavior] ✅ Popup clicked: ${rule.name}`)
+    } else {
+      console.log(`[Behavior] ❌ Popup not found after 15s: ${rule.name}`)
+    }
+
+    return clicked
+  }
+
+  // ─── 页面停留 ───────────────────────────────────────────
   private async stayOnPage(): Promise<void> {
     const [min, max] = this.config.stayDuration
     const duration = this.randomBetween(min, max)
-    console.log(`[Behavior] Staying on page for ${duration}ms`)
+    console.log(`[Behavior] Staying ${duration}ms`)
     await this.delay(duration)
   }
 
-  /**
-   * 模拟滚动行为
-   */
+  // ─── 滚动 ────────────────────────────────────────────────
   private async simulateScroll(): Promise<void> {
-    const scrollConfig = this.config.scroll
-    const scrollCount = this.randomBetween(scrollConfig.scrollCount[0], scrollConfig.scrollCount[1])
-    
-    console.log(`[Behavior] Starting scroll simulation, count: ${scrollCount}`)
+    const sc = this.config.scroll
+    if (!sc) return
 
-    for (let i = 0; i < scrollCount; i++) {
-      const distance = this.randomBetween(scrollConfig.scrollDistance[0], scrollConfig.scrollDistance[1])
-      const interval = this.randomBetween(scrollConfig.scrollInterval[0], scrollConfig.scrollInterval[1])
+    const count = this.randomBetween(sc.scrollCount[0], sc.scrollCount[1])
+    console.log(`[Behavior] Scrolling ${count} times`)
 
-      // 根据方向决定滚动
-      let scrollDirection = 1 // 1 = down, -1 = up
-      
-      if (scrollConfig.direction === 'both') {
-        scrollDirection = Math.random() > 0.5 ? 1 : -1
-      } else if (scrollConfig.direction === 'up') {
-        scrollDirection = -1
-      }
+    for (let i = 0; i < count; i++) {
+      const distance = this.randomBetween(sc.scrollDistance[0], sc.scrollDistance[1])
+      const interval = this.randomBetween(sc.scrollInterval[0], sc.scrollInterval[1])
 
-      // 平滑滚动
-      await this.smoothScroll(distance * scrollDirection, interval)
+      let delta = distance
+      if (sc.direction === 'up') delta = -distance
+      else if (sc.direction === 'both') delta = Math.random() > 0.5 ? distance : -distance
 
-      // 如果到底部且启用了暂停
-      if (scrollConfig.pauseAtBottom && scrollDirection === 1) {
-        const isAtBottom = await this.isAtPageBottom()
-        if (isAtBottom) {
-          const pauseDuration = this.randomBetween(
-            scrollConfig.bottomPauseDuration[0],
-            scrollConfig.bottomPauseDuration[1]
-          )
-          console.log(`[Behavior] At bottom, pausing for ${pauseDuration}ms`)
-          await this.delay(pauseDuration)
+      // Playwright 平滑滚动
+      await this.page.mouse.wheel(0, delta)
+
+      if (sc.pauseAtBottom && delta > 0) {
+        const atBottom = await this.page.evaluate(
+          () => window.innerHeight + window.scrollY >= document.body.scrollHeight - 100
+        )
+        if (atBottom) {
+          const pause = this.randomBetween(sc.bottomPauseDuration[0], sc.bottomPauseDuration[1])
+          await this.delay(pause)
         }
       }
 
@@ -110,236 +227,117 @@ export class BehaviorSimulator {
     }
   }
 
-  /**
-   * 平滑滚动
-   */
-  private async smoothScroll(distance: number, duration: number): Promise<void> {
-    const steps = 10
-    const stepDistance = distance / steps
-    const stepDuration = duration / steps
-
-    for (let i = 0; i < steps; i++) {
-      await this.page.evaluate((delta) => {
-        (window as any).scrollBy(0, delta)
-      }, stepDistance)
-      await this.delay(stepDuration)
-    }
-  }
-
-  /**
-   * 检查是否到达页面底部
-   */
-  private async isAtPageBottom(): Promise<boolean> {
-    return await this.page.evaluate(() => {
-      const win = window as any
-      return (
-        win.innerHeight + win.scrollY >=
-        (document as any).body.scrollHeight - 100
-      )
-    })
-  }
-
-  /**
-   * 模拟鼠标移动
-   */
+  // ─── 鼠标移动 ────────────────────────────────────────────
   private async simulateMouseMove(): Promise<void> {
-    const mouseConfig = this.config.mouseMove
-    const movePoints = this.randomBetween(mouseConfig.movePoints[0], mouseConfig.movePoints[1])
+    const mc = this.config.mouseMove
+    if (!mc) return
 
-    console.log(`[Behavior] Simulating mouse movement, points: ${movePoints}`)
+    const points = this.randomBetween(mc.movePoints[0], mc.movePoints[1])
+    const vp = this.page.viewportSize() || { width: 1920, height: 1080 }
 
-    // 获取页面尺寸
-    const viewport = this.page.viewport()
-    if (!viewport) return
+    console.log(`[Behavior] Mouse move ${points} points`)
 
-    const maxX = viewport.width
-    const maxY = viewport.height
+    let x = this.randomBetween(100, vp.width - 100)
+    let y = this.randomBetween(100, vp.height - 100)
 
-    // 生成贝塞尔曲线控制点
-    const points = this.generateBezierPoints(movePoints, maxX, maxY)
+    for (let i = 0; i < points; i++) {
+      const tx = this.randomBetween(50, vp.width - 50)
+      const ty = this.randomBetween(50, vp.height - 50)
+      const steps = this.randomBetween(5, 15)
 
-    for (const point of points) {
-      const speed = this.randomBetween(mouseConfig.moveSpeed[0], mouseConfig.moveSpeed[1])
-      
-      if (mouseConfig.randomCurve) {
-        // 添加随机偏移使轨迹更自然
-        const offsetX = this.randomBetween(-5, 5)
-        const offsetY = this.randomBetween(-5, 5)
-        await this.page.mouse.move(point.x + offsetX, point.y + offsetY)
-      } else {
-        await this.page.mouse.move(point.x, point.y)
+      // 贝塞尔曲线插值
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps
+        const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+        const cx = x + (tx - x) * ease + (mc.randomCurve ? this.randomBetween(-8, 8) : 0)
+        const cy = y + (ty - y) * ease + (mc.randomCurve ? this.randomBetween(-8, 8) : 0)
+        await this.page.mouse.move(cx, cy)
+        await this.delay(this.randomBetween(mc.moveSpeed[0], mc.moveSpeed[1]))
       }
-      
-      await this.delay(speed)
+
+      x = tx
+      y = ty
     }
   }
 
-  /**
-   * 生成贝塞尔曲线点（模拟人类鼠标轨迹）
-   */
-  private generateBezierPoints(count: number, maxX: number, maxY: number): Array<{ x: number; y: number }> {
-    const points: Array<{ x: number; y: number }> = []
-    
-    // 起点随机
-    let currentX = this.randomBetween(0, maxX)
-    let currentY = this.randomBetween(0, maxY)
-
-    for (let i = 0; i < count; i++) {
-      // 目标点随机
-      const targetX = this.randomBetween(0, maxX)
-      const targetY = this.randomBetween(0, maxY)
-
-      // 使用贝塞尔曲线插值
-      const t = i / count
-      const bezierT = this.easeInOutQuad(t)
-      
-      const x = currentX + (targetX - currentX) * bezierT
-      const y = currentY + (targetY - currentY) * bezierT
-
-      points.push({ x: Math.round(x), y: Math.round(y) })
-      
-      currentX = targetX
-      currentY = targetY
-    }
-
-    return points
-  }
-
-  /**
-   * 缓动函数
-   */
-  private easeInOutQuad(t: number): number {
-    return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
-  }
-
-  /**
-   * 模拟点击行为
-   */
+  // ─── 点击 ────────────────────────────────────────────────
   private async simulateClick(): Promise<void> {
-    const clickConfig = this.config.click
-    let clicksPerformed = 0
+    const cc = this.config.click
+    if (!cc) return
 
-    console.log(`[Behavior] Starting click simulation`)
-
-    for (const selector of clickConfig.selectors) {
-      if (clicksPerformed >= clickConfig.maxClicks) break
-
-      // 检查是否满足点击概率
-      if (Math.random() > clickConfig.clickProbability) continue
+    let clicks = 0
+    for (const selector of cc.selectors) {
+      if (clicks >= cc.maxClicks) break
+      if (Math.random() > cc.clickProbability) continue
 
       try {
-        // 等待元素出现
-        const element = await this.page.$(selector)
-        if (!element) {
-          console.log(`[Behavior] Element not found: ${selector}`)
-          continue
+        const locator = this.page.locator(selector).first()
+        await locator.waitFor({ state: 'visible', timeout: 3000 })
+
+        if (cc.moveBeforeClick) {
+          const box = await locator.boundingBox()
+          if (box) {
+            await this.page.mouse.move(
+              box.x + box.width / 2 + this.randomBetween(-5, 5),
+              box.y + box.height / 2 + this.randomBetween(-5, 5)
+            )
+            await this.delay(this.randomBetween(100, 300))
+          }
         }
 
-        // 检查元素是否可见
-        const isVisible = await element.isIntersectingViewport()
-        if (!isVisible) {
-          console.log(`[Behavior] Element not visible: ${selector}`)
-          continue
-        }
-
-        // 获取元素位置
-        const boundingBox = await element.boundingBox()
-        if (!boundingBox) continue
-
-        // 点击前移动鼠标
-        if (clickConfig.moveBeforeClick) {
-          const centerX = boundingBox.x + boundingBox.width / 2
-          const centerY = boundingBox.y + boundingBox.height / 2
-          
-          // 添加一些随机偏移
-          const offsetX = this.randomBetween(-5, 5)
-          const offsetY = this.randomBetween(-5, 5)
-          
-          await this.page.mouse.move(centerX + offsetX, centerY + offsetY)
-          await this.delay(this.randomBetween(100, 300))
-        }
-
-        // 点击
-        await element.click()
-        clicksPerformed++
+        await locator.click()
+        clicks++
         console.log(`[Behavior] Clicked: ${selector}`)
-
-        // 点击后等待
         await this.delay(this.randomBetween(500, 1500))
-      } catch (error) {
-        console.log(`[Behavior] Click failed for ${selector}:`, error)
+      } catch {
+        // 元素不存在，跳过
       }
     }
-
-    console.log(`[Behavior] Click simulation complete, total clicks: ${clicksPerformed}`)
   }
 
-  /**
-   * 模拟输入行为
-   */
+  // ─── 输入 ────────────────────────────────────────────────
   private async simulateInput(): Promise<void> {
-    const inputConfig = this.config.input
+    const ic = this.config.input
+    if (!ic || !ic.presetTexts.length) return
 
-    console.log(`[Behavior] Starting input simulation`)
-
-    for (const selector of inputConfig.selectors) {
-      // 检查是否满足输入概率
-      if (Math.random() > inputConfig.inputProbability) continue
+    for (const selector of ic.selectors) {
+      if (Math.random() > ic.inputProbability) continue
 
       try {
-        // 等待输入框出现
-        await this.page.waitForSelector(selector, { timeout: 3000 })
+        const locator = this.page.locator(selector).first()
+        await locator.waitFor({ state: 'visible', timeout: 3000 })
+        await locator.click()
+        await locator.fill('')
 
-        // 清空输入框
-        await this.page.$eval(selector, (el: any) => (el.value = ''))
-
-        // 选择要输入的文本
-        if (inputConfig.presetTexts.length === 0) continue
-        const text = inputConfig.presetTexts[Math.floor(Math.random() * inputConfig.presetTexts.length)]
-
-        // 聚焦输入框
-        await this.page.focus(selector)
-
-        // 逐字输入（模拟打字）
+        const text = ic.presetTexts[Math.floor(Math.random() * ic.presetTexts.length)]
         for (const char of text) {
           await this.page.keyboard.type(char)
-          const typingDelay = this.randomBetween(inputConfig.typingSpeed[0], inputConfig.typingSpeed[1])
-          await this.delay(typingDelay)
+          await this.delay(this.randomBetween(ic.typingSpeed[0], ic.typingSpeed[1]))
         }
 
-        console.log(`[Behavior] Input completed for: ${selector}`)
-
-        // 输入后等待
+        console.log(`[Behavior] Input done: ${selector}`)
         await this.delay(this.randomBetween(300, 800))
-      } catch (error) {
-        console.log(`[Behavior] Input failed for ${selector}:`, error)
+      } catch {
+        // 跳过
       }
     }
   }
 
-  /**
-   * 工具方法：随机范围值
-   */
+  // ─── 工具方法 ────────────────────────────────────────────
   private randomBetween(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min + 1)) + min
   }
 
-  /**
-   * 工具方法：延迟
-   */
   private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms))
+    return new Promise(resolve => setTimeout(resolve, ms))
   }
 
-  /**
-   * 工具方法：打乱数组
-   */
-  private shuffleArray<T>(array: T[]): T[] {
-    const shuffled = [...array]
-    for (let i = shuffled.length - 1; i > 0; i--) {
+  private shuffleArray<T>(arr: T[]): T[] {
+    const a = [...arr]
+    for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      ;[a[i], a[j]] = [a[j], a[i]]
     }
-    return shuffled
+    return a
   }
 }

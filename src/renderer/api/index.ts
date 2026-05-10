@@ -98,7 +98,7 @@ export const proxyAPI = {
 // Analytics APIs
 export const analyticsAPI = {
   getExecutionHistory: (limit?: number, offset?: number) =>
-    api.get<ApiResponse>('/api/analytics/executions', {
+    api.get<ApiResponse>('/api/executions', {
       params: { limit, offset },
     }),
   getExecutionLogs: (executionId: string, limit?: number, offset?: number) =>
@@ -131,6 +131,25 @@ export const analyticsAPI = {
     api.get<ApiResponse>('/api/analytics/report', {
       params: { taskId, days },
     }),
+}
+
+// Preview APIs - 预览模式
+export const previewAPI = {
+  // 启动预览
+  start: (taskId: string) => 
+    api.post<ApiResponse>('/api/preview/start', { taskId }),
+  
+  // 停止预览
+  stop: () => 
+    api.post<ApiResponse>('/api/preview/stop'),
+  
+  // 获取预览状态
+  getStatus: () => 
+    api.get<ApiResponse>('/api/preview/status'),
+  
+  // 获取预览日志（支持增量）
+  getLogs: (from?: number) => 
+    api.get<ApiResponse>('/api/preview/logs', { params: { from } }),
 }
 
 export default api

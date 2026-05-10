@@ -75,7 +75,85 @@ export const DEFAULT_TASK_CONFIG = {
       inputProbability: 0.5,
     },
     
+    // 默认弹窗处理配置
+    popup: {
+      enabled: true,
+      rules: [],
+      waitTimeout: 5000,
+      afterClickDelay: [500, 1500] as [number, number],
+    },
+    
     randomOrder: true,
+  },
+}
+
+// 常用弹窗处理预设
+export const POPUP_PRESETS = {
+  // 年龄验证弹窗（如你截图中的"是否满24岁？"）
+  AGE_VERIFICATION: {
+    name: '年龄验证',
+    containerSelector: undefined,
+    buttonSelectors: [
+      '.answer-btn-yes-inline',
+      '.answer-btn-yes',
+      'button.answer-btn-yes-inline',
+      'button[class*="yes"]',
+      'button[class*="confirm"]',
+      'button[class*="agree"]',
+    ],
+    buttonTexts: ['是', '确认', '我已满18岁', '我已满21岁', '我已满24岁', 'Yes', 'I am over 18', 'Enter', '进入'],
+    required: false,
+    priority: 1,
+  },
+  
+  // Cookie 同意弹窗
+  COOKIE_CONSENT: {
+    name: 'Cookie同意',
+    containerSelector: undefined,
+    buttonSelectors: [
+      '#accept-cookies',
+      '.cookie-accept',
+      '.cookie-consent-accept',
+      'button[data-cookie-accept]',
+      '[class*="cookie"] button',
+      '.cc-accept',
+      '.cc-dismiss',
+    ],
+    buttonTexts: ['接受', '同意', '我同意', 'Accept', 'Accept All', 'I Agree', 'Got it', '知道了'],
+    required: false,
+    priority: 2,
+  },
+  
+  // 订阅/通知弹窗
+  SUBSCRIPTION_POPUP: {
+    name: '订阅弹窗',
+    containerSelector: undefined,
+    buttonSelectors: [
+      '.modal-close',
+      '.popup-close',
+      '[class*="close"]',
+      'button[aria-label="Close"]',
+      '.dismiss',
+    ],
+    buttonTexts: ['关闭', '不了', '以后再说', 'Close', 'No thanks', 'Maybe later', '×'],
+    required: false,
+    priority: 3,
+  },
+  
+  // 广告弹窗
+  AD_POPUP: {
+    name: '广告弹窗',
+    containerSelector: undefined,
+    buttonSelectors: [
+      '.ad-close',
+      '[class*="ad"] .close',
+      '[id*="ad"] .close',
+      '.skip-ad',
+      '[class*="skip"]',
+    ],
+    buttonTexts: ['跳过', '关闭广告', 'Skip', 'Close', '×'],
+    required: false,
+    priority: 4,
   },
 }
 

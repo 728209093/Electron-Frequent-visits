@@ -18,11 +18,13 @@ import {
   Row,
   Col,
   Tooltip,
+  Modal,
 } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined, QuestionCircleOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined, QuestionCircleOutlined, AlertOutlined, EyeOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { taskAPI, projectAPI, proxyAPI } from '../api'
+import { taskAPI, projectAPI, proxyAPI, previewAPI } from '../api'
 import { DEFAULT_TASK_CONFIG } from '../../shared/constants'
+import PopupRuleConfig from '../components/PopupRuleConfig'
 
 interface Task {
   id: string
@@ -59,6 +61,14 @@ const TaskConfig: React.FC = () => {
   const [drawerVisible, setDrawerVisible] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [form] = Form.useForm()
+
+  // 预览相关状态
+  const [previewModalVisible, setPreviewModalVisible] = useState(false)
+  const [previewLogs, setPreviewLogs] = useState<Array<{ time: string; message: string; type: string }>>([])
+  const [previewRunning, setPreviewRunning] = useState(false)
+  const [previewTaskName, setPreviewTaskName] = useState('')
+  const previewLogRef = React.useRef<HTMLDivElement>(null)
+  const previewPollRef = React.useRef<NodeJS.Timeout | null>(null)
 
   // 加载数据
   useEffect(() => {
@@ -182,6 +192,119 @@ const TaskConfig: React.FC = () => {
     }
   }
 
+  // 启动预览模式
+  const handleStartPreview = async (task: Task) => {
+    try {
+      console.log('[Preview] Starting preview for task:', task)
+      
+      if (!task.id) {
+        message.error('任务ID不存在')
+        return
+      }
+      
+      // 先尝试停止已有的预览
+      try {
+        await previewAPI.stop()
+        await new Promise(resolve => setTimeout(resolve, 500)) // 等待停止完成
+      } catch (error) {
+        // 忽略停止错误（可能没有运行中的预览）
+      }
+      
+      setPreviewTaskName(task.name)
+      setPreviewLogs([])
+      setPreviewRunning(true)
+      setPreviewModalVisible(true)
+
+      // 启动预览
+      const response = await previewAPI.start(task.id)
+      console.log('[Preview] Start response:', response)
+
+      // 开始轮询日志
+      startLogPolling()
+    } catch (error: any) {
+      console.error('[Preview] Start error:', error)
+      const errorMsg = error.response?.data?.message || error.message || '未知错误'
+      message.error(`预览启动失败: ${errorMsg}`)
+      setPreviewRunning(false)
+      setPreviewModalVisible(false)
+    }
+  }
+
+  // 停止预览
+  const handleStopPreview = async () => {
+    try {
+      await previewAPI.stop()
+      stopLogPolling()
+      setPreviewRunning(false)
+      message.success('预览已停止')
+    } catch (error: any) {
+      message.error(`停止失败: ${error.message}`)
+    }
+  }
+
+  // 开始轮询日志
+  const startLogPolling = () => {
+    let lastLogCount = 0
+    
+    const poll = async () => {
+      try {
+        const response = await previewAPI.getLogs(lastLogCount) as any
+        if (response?.logs?.length > 0) {
+          setPreviewLogs(prev => [...prev, ...response.logs])
+          lastLogCount = response.total
+          
+          // 自动滚动到底部
+          setTimeout(() => {
+            if (previewLogRef.current) {
+              previewLogRef.current.scrollTop = previewLogRef.current.scrollHeight
+            }
+          }, 100)
+        }
+        
+        // 检查状态
+        if (response?.status === 'completed' || response?.status === 'error') {
+          setPreviewRunning(false)
+          stopLogPolling()
+        }
+      } catch (error) {
+        console.error('Poll logs error:', error)
+      }
+    }
+
+    // 立即执行一次
+    poll()
+    
+    // 每500ms轮询一次
+    previewPollRef.current = setInterval(poll, 500)
+  }
+
+  // 停止轮询
+  const stopLogPolling = () => {
+    if (previewPollRef.current) {
+      clearInterval(previewPollRef.current)
+      previewPollRef.current = null
+    }
+  }
+
+  // 关闭预览弹窗时清理
+  const handleClosePreviewModal = () => {
+    stopLogPolling()
+    if (previewRunning) {
+      handleStopPreview()
+    }
+    setPreviewModalVisible(false)
+  }
+
+  // 获取日志颜色
+  const getLogColor = (type: string) => {
+    switch (type) {
+      case 'success': return '#52c41a'
+      case 'error': return '#ff4d4f'
+      case 'action': return '#1890ff'
+      default: return '#666'
+    }
+  }
+
   // 表格列定义
   const columns = [
     {
@@ -221,9 +344,20 @@ const TaskConfig: React.FC = () => {
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 220,
+      width: 280,
       render: (_: any, record: Task) => (
         <Space size="small" wrap>
+          <Tooltip title="预览模式 - 可视化查看执行过程">
+            <Button
+              type="default"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => handleStartPreview(record)}
+              style={{ color: '#722ed1', borderColor: '#722ed1' }}
+            >
+              预览
+            </Button>
+          </Tooltip>
           {(record.status === 'draft' || record.status === 'paused') && (
             <Button
               type="primary"
@@ -268,6 +402,17 @@ const TaskConfig: React.FC = () => {
   // 行为模拟配置表单项
   const behaviorFormItems = (
     <>
+      <Divider orientation="left">
+        <Space>
+          <AlertOutlined />
+          弹窗处理设置
+        </Space>
+      </Divider>
+      
+      <Form.Item name={['config', 'behavior', 'popup']}>
+        <PopupRuleConfig />
+      </Form.Item>
+
       <Divider orientation="left">页面停留设置</Divider>
       
       <Form.Item label={t('tasks.stayDuration')}>
@@ -673,6 +818,64 @@ const TaskConfig: React.FC = () => {
           </Form.Item>
         </Form>
       </Drawer>
+
+      {/* 预览模式弹窗 */}
+      <Modal
+        title={
+          <Space>
+            <EyeOutlined style={{ color: '#722ed1' }} />
+            <span>预览模式 - {previewTaskName}</span>
+            {previewRunning && <Tag color="processing">运行中</Tag>}
+          </Space>
+        }
+        open={previewModalVisible}
+        onCancel={handleClosePreviewModal}
+        width={700}
+        footer={[
+          <Button key="stop" danger onClick={handleStopPreview} disabled={!previewRunning}>
+            停止预览
+          </Button>,
+          <Button key="close" onClick={handleClosePreviewModal}>
+            关闭
+          </Button>,
+        ]}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Tag color="purple">💡 提示：浏览器窗口会在屏幕右侧打开，您可以实时观察操作过程</Tag>
+        </div>
+        
+        <div
+          ref={previewLogRef}
+          style={{
+            height: 400,
+            overflow: 'auto',
+            background: '#1e1e1e',
+            borderRadius: 8,
+            padding: 16,
+            fontFamily: 'Consolas, Monaco, monospace',
+            fontSize: 13,
+          }}
+        >
+          {previewLogs.length === 0 ? (
+            <div style={{ color: '#666', textAlign: 'center', paddingTop: 150 }}>
+              {previewRunning ? '等待日志...' : '暂无日志'}
+            </div>
+          ) : (
+            previewLogs.map((log, index) => (
+              <div
+                key={index}
+                style={{
+                  marginBottom: 6,
+                  lineHeight: 1.6,
+                }}
+              >
+                <span style={{ color: '#888', marginRight: 8 }}>[{log.time}]</span>
+                <span style={{ color: getLogColor(log.type) }}>{log.message}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

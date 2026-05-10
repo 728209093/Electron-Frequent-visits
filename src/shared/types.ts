@@ -57,8 +57,36 @@ export interface BehaviorConfig {
   // 输入配置（可选，用于搜索等场景）
   input: InputConfig
   
+  // 弹窗处理配置
+  popup: PopupConfig
+  
   // 是否随机执行行为
   randomOrder: boolean
+}
+
+export interface PopupConfig {
+  enabled: boolean
+  // 弹窗处理规则列表
+  rules: PopupRule[]
+  // 等待弹窗出现的超时时间（毫秒）
+  waitTimeout: number
+  // 处理弹窗后的等待时间（毫秒）
+  afterClickDelay: [number, number]
+}
+
+export interface PopupRule {
+  // 规则名称（用于日志）
+  name: string
+  // 弹窗容器选择器（可选，用于检测弹窗是否存在）
+  containerSelector?: string
+  // 要点击的按钮选择器（支持多个，按顺序尝试）
+  buttonSelectors: string[]
+  // 按钮文本匹配（可选，用于通过文本查找按钮）
+  buttonTexts?: string[]
+  // 是否必须处理（如果为true，弹窗未找到会报错）
+  required: boolean
+  // 处理优先级（数字越小优先级越高）
+  priority: number
 }
 
 export interface ScrollConfig {

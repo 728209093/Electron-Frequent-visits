@@ -1,6 +1,3 @@
-// Register tsconfig paths for CommonJS module resolution
-import 'tsconfig-paths/register'
-
 import { app, BrowserWindow, Menu, ipcMain } from 'electron'
 import path from 'path'
 import { Database } from './database/Database'

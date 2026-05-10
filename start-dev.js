@@ -3,10 +3,12 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 // 启动 npm run dev，同时监听 Vite 输出来确定端口
-const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const isWin = process.platform === 'win32';
+const command = isWin ? 'npm.cmd' : 'npm';
 const devProcess = spawn(command, ['run', 'dev'], {
   cwd: __dirname,
   stdio: 'pipe',
+  shell: isWin,
 });
 
 let vitePort = 5173;
@@ -17,8 +19,9 @@ devProcess.stdout.on('data', (data) => {
   const output = data.toString();
   console.log(output);
 
-  // 从 Vite 输出中提取端口
-  const portMatch = output.match(/Local:\s+http:\/\/localhost:(\d+)\//);
+  // 去除 ANSI 转义码后再匹配端口
+  const clean = output.replace(/\x1b\[[0-9;]*m/g, '');
+  const portMatch = clean.match(/Local:\s+http:\/\/localhost:(\d+)\//);
   if (portMatch && !electronStarted) {
     vitePort = parseInt(portMatch[1], 10);
     console.log(`\n✓ Vite running on port ${vitePort}`);
@@ -39,7 +42,8 @@ devProcess.stderr.on('data', (data) => {
 });
 
 function startElectron() {
-  const electronProcess = spawn('electron', ['dist/main/main/index.js'], {
+  const electronBin = path.join(__dirname, 'node_modules', 'electron', 'dist', 'electron.exe');
+  const electronProcess = spawn(electronBin, ['dist/main/main/index.js'], {
     cwd: __dirname,
     stdio: 'inherit',
     env: {

@@ -1,10 +1,12 @@
-import sqlite3 from 'sqlite3'
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js'
 import path from 'path'
+import fs from 'fs'
 import { app } from 'electron'
 
 export class Database {
-  private db: sqlite3.Database | null = null
+  private db: SqlJsDatabase | null = null
   private dbPath: string
+  private saveTimer: NodeJS.Timeout | null = null
 
   constructor() {
     const dataPath = app.getPath('userData')
@@ -12,33 +14,38 @@ export class Database {
   }
 
   async initialize() {
-    return new Promise<void>((resolve, reject) => {
-      this.db = new sqlite3.Database(this.dbPath, async (err) => {
-        if (err) {
-          reject(err)
-        } else {
-          try {
-            await this.createTables()
-            resolve()
-          } catch (error) {
-            reject(error)
-          }
-        }
-      })
-    })
+    const SQL = await initSqlJs()
+    if (fs.existsSync(this.dbPath)) {
+      const fileBuffer = fs.readFileSync(this.dbPath)
+      this.db = new SQL.Database(fileBuffer)
+    } else {
+      this.db = new SQL.Database()
+    }
+    this.db.run('PRAGMA foreign_keys = ON')
+    await this.createTables()
+  }
+
+  private scheduleSave() {
+    if (this.saveTimer) clearTimeout(this.saveTimer)
+    this.saveTimer = setTimeout(() => this.persist(), 500)
+  }
+
+  private persist() {
+    if (!this.db) return
+    const data = this.db.export()
+    fs.mkdirSync(path.dirname(this.dbPath), { recursive: true })
+    fs.writeFileSync(this.dbPath, Buffer.from(data))
   }
 
   private async createTables() {
     if (!this.db) throw new Error('Database not initialized')
 
-    // 首先检查projects表是否存在
-    const tableExists = await this.get(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='projects'"
-    )
+    const tableExists = this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='projects'")
+      .getAsObject({})
 
-    if (!tableExists) {
-      // 如果不存在，创建新表
-      await this.run(`
+    if (!tableExists.name) {
+      this.db.run(`
         CREATE TABLE projects (
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
@@ -51,26 +58,26 @@ export class Database {
         )
       `)
     } else {
-      // 如果表存在，检查是否缺少新列
-      const columns = await this.all(
-        "PRAGMA table_info(projects)"
-      )
-      const columnNames = columns.map((col: any) => col.name)
+      const stmt = this.db.prepare('PRAGMA table_info(projects)')
+      const columnNames: string[] = []
+      while (stmt.step()) {
+        const row = stmt.getAsObject() as any
+        columnNames.push(row.name)
+      }
+      stmt.free()
 
-      // 添加缺失的列
       if (!columnNames.includes('url')) {
-        await this.run('ALTER TABLE projects ADD COLUMN url TEXT')
+        this.db.run('ALTER TABLE projects ADD COLUMN url TEXT')
       }
       if (!columnNames.includes('targetTraffic')) {
-        await this.run('ALTER TABLE projects ADD COLUMN targetTraffic INTEGER DEFAULT 0')
+        this.db.run('ALTER TABLE projects ADD COLUMN targetTraffic INTEGER DEFAULT 0')
       }
       if (!columnNames.includes('status')) {
-        await this.run('ALTER TABLE projects ADD COLUMN status TEXT DEFAULT "active"')
+        this.db.run("ALTER TABLE projects ADD COLUMN status TEXT DEFAULT 'active'")
       }
     }
 
     const tables = [
-      // Tasks table
       `CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
         projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -87,8 +94,6 @@ export class Database {
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       )`,
-
-      // Proxy Pools table
       `CREATE TABLE IF NOT EXISTS proxy_pools (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -98,8 +103,6 @@ export class Database {
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       )`,
-
-      // Proxy List table
       `CREATE TABLE IF NOT EXISTS proxy_list (
         id TEXT PRIMARY KEY,
         poolId TEXT NOT NULL REFERENCES proxy_pools(id) ON DELETE CASCADE,
@@ -113,8 +116,6 @@ export class Database {
         failureCount INTEGER DEFAULT 0,
         createdAt INTEGER NOT NULL
       )`,
-
-      // Task Executions table
       `CREATE TABLE IF NOT EXISTS task_executions (
         id TEXT PRIMARY KEY,
         taskId TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -127,8 +128,6 @@ export class Database {
         averageResponseTime REAL,
         createdAt INTEGER NOT NULL
       )`,
-
-      // Execution Logs table
       `CREATE TABLE IF NOT EXISTS execution_logs (
         id TEXT PRIMARY KEY,
         executionId TEXT NOT NULL REFERENCES task_executions(id) ON DELETE CASCADE,
@@ -143,72 +142,73 @@ export class Database {
     ]
 
     for (const sql of tables) {
-      await this.run(sql)
+      this.db.run(sql)
     }
+
+    this.persist()
   }
 
   run(sql: string, params: any[] = []): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (!this.db) {
-        reject(new Error('Database not initialized'))
-        return
+      if (!this.db) { reject(new Error('Database not initialized')); return }
+      try {
+        this.db.run(sql, params)
+        this.scheduleSave()
+        resolve()
+      } catch (err) {
+        reject(err)
       }
-      this.db.run(sql, params, (err) => {
-        if (err) reject(err)
-        else resolve()
-      })
     })
   }
 
   get(sql: string, params: any[] = []): Promise<any> {
     return new Promise((resolve, reject) => {
-      if (!this.db) {
-        reject(new Error('Database not initialized'))
-        return
+      if (!this.db) { reject(new Error('Database not initialized')); return }
+      try {
+        const stmt = this.db.prepare(sql)
+        stmt.bind(params)
+        const row = stmt.step() ? stmt.getAsObject() : undefined
+        stmt.free()
+        resolve(row)
+      } catch (err) {
+        reject(err)
       }
-      this.db.get(sql, params, (err, row) => {
-        if (err) reject(err)
-        else resolve(row)
-      })
     })
   }
 
   all(sql: string, params: any[] = []): Promise<any[]> {
     return new Promise((resolve, reject) => {
-      if (!this.db) {
-        reject(new Error('Database not initialized'))
-        return
+      if (!this.db) { reject(new Error('Database not initialized')); return }
+      try {
+        const stmt = this.db.prepare(sql)
+        stmt.bind(params)
+        const rows: any[] = []
+        while (stmt.step()) {
+          rows.push(stmt.getAsObject())
+        }
+        stmt.free()
+        resolve(rows)
+      } catch (err) {
+        reject(err)
       }
-      this.db.all(sql, params, (err, rows) => {
-        if (err) reject(err)
-        else resolve(rows || [])
-      })
     })
   }
 
   async exec(sql: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (!this.db) {
-        reject(new Error('Database not initialized'))
-        return
-      }
-      this.db.exec(sql, (err) => {
-        if (err) reject(err)
-        else resolve()
-      })
-    })
+    if (!this.db) throw new Error('Database not initialized')
+    this.db.exec(sql)
+    this.scheduleSave()
   }
 
   close(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (!this.db) {
-        resolve()
-        return
+    return new Promise((resolve) => {
+      if (this.saveTimer) clearTimeout(this.saveTimer)
+      if (this.db) {
+        this.persist()
+        this.db.close()
+        this.db = null
       }
-      this.db.close((err) => {
-        if (err) reject(err)
-        else resolve()
-      })
+      resolve()
     })
   }
 }

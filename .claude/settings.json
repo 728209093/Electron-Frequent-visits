@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node start-dev.js)",
+      "Bash(tasklist)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(taskkill /F /IM electron.exe)",
+      "Bash(sleep 15 && cat /tmp/electron-dev.log 2>&1 | head -80)",
+      "Read(//tmp/**)",
+      "Bash(\"node_modules/electron/dist/electron.exe\" dist/main/main/index.js)",
+      "Bash(node -e \"console.log\\(require.resolve\\('electron'\\)\\)\")",
+      "Bash(npx electron *)",
+      "Bash(echo \"console.log\\(typeof require\\('electron'\\)\\); console.log\\(JSON.stringify\\(Object.keys\\(require\\('electron'\\)\\)\\)\\);\")",
+      "Bash(rm electron-test.js)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"console.log\\(require\\('electron/package.json'\\).version\\)\")",
+      "Bash(npx node -e ' *)"
+    ]
+  }
+}

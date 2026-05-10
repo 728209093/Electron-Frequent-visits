@@ -29,8 +29,33 @@ export class BrowserService {
       args.push(`--proxy-server=${proxyUrl}`)
     }
 
+    // 尝试查找系统安装的 Chrome
+    const possiblePaths = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      (process.env.LOCALAPPDATA || '') + '\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      // macOS
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      // Linux
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium-browser',
+    ]
+    
+    let executablePath: string | undefined
+    const fs = await import('fs')
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        executablePath = p
+        console.log(`[Browser] Using browser: ${p}`)
+        break
+      }
+    }
+
     this.browser = await puppeteer.launch({
       headless: this.config.useHeadless ? 'new' : false,
+      executablePath,
       args: args,
       ignoreDefaultArgs: ['--enable-automation'],
     })
@@ -285,8 +310,14 @@ export class BrowserService {
     try {
       page = await this.newPage()
 
+      // 自动添加协议
+      let targetUrl = url
+      if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+        targetUrl = 'https://' + targetUrl
+      }
+
       // 访问目标 URL
-      const response = await page.goto(url, {
+      const response = await page.goto(targetUrl, {
         waitUntil: 'networkidle2',
         timeout: 30000,
       })

@@ -5,27 +5,27 @@ import { projectRoutes } from './routes/projects'
 import { taskRoutes } from './routes/tasks'
 import { proxyRoutes } from './routes/proxies'
 import { analyticsRoutes } from './routes/analytics'
+import { previewRoutes } from './routes/preview'
+
+import { settingsRoutes } from './routes/settings'
 
 let server: any = null
 
 export async function createBackendServer(db: Database) {
   const app = express()
 
-  // Middleware
   app.use(cors())
   app.use(express.json())
   app.use(express.urlencoded({ extended: true }))
 
-  // Health check
-  app.get('/health', (_req, res) => {
-    res.json({ status: 'ok' })
-  })
+  app.get('/health', (_req, res) => res.json({ status: 'ok' }))
 
-  // Routes
   app.use(projectRoutes(db))
   app.use(taskRoutes(db))
   app.use(proxyRoutes(db))
   app.use(analyticsRoutes(db))
+  app.use(previewRoutes(db))
+  app.use(settingsRoutes())
 
   // Error handling
   app.use((err: any, _req: any, res: any, _next: any) => {
